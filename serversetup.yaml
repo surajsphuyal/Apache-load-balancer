@@ -1,0 +1,105 @@
+---
+- name: Setup apache2 and php server
+  hosts: backendservers
+  become: yes
+  vars:
+      packages:
+           - apache2
+           - mysql-server  
+           - php
+
+      phpmodules:
+           - libapache2-mod-php
+           - php-curl
+           - php-gd
+           - php-mbstring
+           - php-xml
+           - php-xmlrpc
+           - php-soap
+           - php-intl
+           - php-zip
+           - python3-pymysql
+           - php-mysql  
+
+  tasks:
+    - name: install apache and PHP server
+      apt:
+         name: "{{ packages }}"
+         state: latest
+         update_cache: yes
+
+    - name: Enable apache service
+      service:
+         name: apache2
+         enabled: yes
+    
+    - name: Start apache service
+      service:
+         name: apache2
+         state: started
+
+    - name: install necessary modules
+      apt:
+         name: "{{ phpmodules }}"
+         state: latest
+         update_cache: yes
+      notify:
+         - restart apache2
+
+    - name: remove 000-default config file
+      command: mv /etc/apache2/sites-available/000-default.conf /etc/apache2/sites-available/000-default.conf.bak
+      ignore_errors: yes      
+    
+    - name: copy new 000-default config file
+      copy:
+        src: /home/vagrant/000-default.conf
+        dest: /etc/apache2/sites-available/000-default.conf
+
+    - name: enabled mod_rewrite
+      command: a2enmod rewrite      
+      notify:
+         - restart apache2    
+
+    - name: Create document root
+      file:
+         path: "/var/www/html"
+         state: directory
+         owner: "www-data"
+         group: "www-data"
+         mode: '0755'
+
+ # wordpress configuration
+    - name: Download and unpack wordpress
+      unarchive:
+         src: https://wordpress.org/latest.tar.gz
+         dest: "/var/www/html"
+         remote_src: yes
+         creates: "/var/www/html/wordpress"
+
+   
+    - name: Set ownership
+      file:
+         path: "/var/www/html"
+         state: directory
+         recurse: yes
+         owner: www-data
+         group: www-data
+
+    - name: Set permissions for directories
+      shell: "/usr/bin/find /var/www/html/wordpress/ -type d -exec chmod 750 {} \\;"
+
+    - name: Set permissions for files
+      shell: "/usr/bin/find /var/www/html/wordpress/ -type f -exec chmod 640 {} \\;"
+
+    - name: Copy wp-config file to project
+      copy:
+         src: /home/vagrant/wp-config.php
+         dest: /var/www/html/wordpress/wp-config.php
+
+ # handlers services
+  handlers:      
+    - name: restart apache2
+      service:
+         name: apache2
+         state: restarted
+
